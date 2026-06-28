@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { C, s, Dot } from './ui';
+import { C, s } from './ui';
 
 export default function NewJobSheet({ mechanics, onClose, onCreate }) {
   const [f, setF] = useState({ client: '', address: '', scooterType: '', description: '', mechanicId: null, priority: 'medium' });

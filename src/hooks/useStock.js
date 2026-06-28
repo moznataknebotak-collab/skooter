@@ -1,9 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 
 export function useStock(mechanicId) {
   const [stock, setStock] = useState([]);
   const [loading, setLoading] = useState(true);
+
+  const fetchStock = useCallback(async () => {
+    const { data } = await supabase
+      .from('stock_items')
+      .select('*')
+      .eq('mechanic_id', mechanicId)
+      .order('name');
+    setStock(data ?? []);
+    setLoading(false);
+  }, [mechanicId]);
 
   useEffect(() => {
     if (!mechanicId) return;
@@ -15,17 +25,7 @@ export function useStock(mechanicId) {
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [mechanicId]);
-
-  const fetchStock = async () => {
-    const { data } = await supabase
-      .from('stock_items')
-      .select('*')
-      .eq('mechanic_id', mechanicId)
-      .order('name');
-    setStock(data ?? []);
-    setLoading(false);
-  };
+  }, [mechanicId, fetchStock]);
 
   const adjustQty = async (itemId, delta) => {
     const item = stock.find(i => i.id === itemId);

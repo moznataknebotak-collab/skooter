@@ -6,7 +6,7 @@ import { useShoppingList } from '../hooks/useShoppingList';
 import JobSheet from './JobSheet';
 import ShoppingListSheet from './ShoppingListSheet';
 
-export default function Mechanic({ profile, userId, onLogout }) {
+export default function Mechanic({ userId, onLogout }) {
   const { jobs, loading, completeJob, refetch } = useJobs(userId);
   const { stock, adjustQty, addItem } = useStock(userId);
   const { sendList } = useShoppingList(userId);

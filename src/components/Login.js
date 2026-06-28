@@ -13,7 +13,7 @@ export default function Login({ onLogin }) {
     setError('');
     try {
       await onLogin(email, pw);
-    } catch (e) {
+    } catch {
       setError('Nesprávný e-mail nebo heslo.');
     } finally {
       setLoading(false);

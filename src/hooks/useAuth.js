@@ -1,10 +1,20 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 
 export function useAuth() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null); // { name, role }
   const [loading, setLoading] = useState(true);
+
+  const fetchProfile = useCallback(async (userId) => {
+    const { data } = await supabase
+      .from('users')
+      .select('name, role')
+      .eq('id', userId)
+      .single();
+    setProfile(data);
+    setLoading(false);
+  }, []);
 
   useEffect(() => {
     // Get initial session
@@ -22,17 +32,7 @@ export function useAuth() {
     });
 
     return () => subscription.unsubscribe();
-  }, []);
-
-  const fetchProfile = async (userId) => {
-    const { data } = await supabase
-      .from('users')
-      .select('name, role')
-      .eq('id', userId)
-      .single();
-    setProfile(data);
-    setLoading(false);
-  };
+  }, [fetchProfile]);
 
   const signIn = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });

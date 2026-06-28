@@ -46,7 +46,7 @@ export default function JobSheet({ job, role, stock, onClose, onToast, timerJob,
     setSubmitting(true);
     try {
       await onComplete({ notes, usedParts: selectedParts });
-    } catch (e) {
+    } catch {
       onToast('Chyba při ukládání');
     } finally {
       setSubmitting(false);

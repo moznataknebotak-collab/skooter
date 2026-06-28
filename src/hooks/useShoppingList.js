@@ -1,11 +1,21 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 
 export function useShoppingList(mechanicId) {
   const [lists, setLists] = useState([]);
 
+  const fetchLists = useCallback(async () => {
+    let query = supabase
+      .from('shopping_lists')
+      .select('*');
+
+    if (mechanicId) query = query.eq('mechanic_id', mechanicId);
+
+    const { data } = await query.order('sent_at', { ascending: false });
+    setLists(data ?? []);
+  }, [mechanicId]);
+
   useEffect(() => {
-    if (!mechanicId) return;
     fetchLists();
 
     const channel = supabase
@@ -14,16 +24,7 @@ export function useShoppingList(mechanicId) {
       .subscribe();
 
     return () => supabase.removeChannel(channel);
-  }, [mechanicId]);
-
-  const fetchLists = async () => {
-    const { data } = await supabase
-      .from('shopping_lists')
-      .select('*')
-      .eq('mechanic_id', mechanicId)
-      .order('sent_at', { ascending: false });
-    setLists(data ?? []);
-  };
+  }, [fetchLists]);
 
   const sendList = async (items) => {
     const { data } = await supabase

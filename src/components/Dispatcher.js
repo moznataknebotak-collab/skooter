@@ -6,7 +6,7 @@ import { useShoppingList } from '../hooks/useShoppingList';
 import JobSheet from './JobSheet';
 import NewJobSheet from './NewJobSheet';
 
-export default function Dispatcher({ profile, onLogout }) {
+export default function Dispatcher({ onLogout }) {
   const { jobs, loading, createJob, refetch } = useJobs();
   const { mechanics } = useMechanics();
   const { lists, resolveList } = useShoppingList(null); // dispatcher sees all

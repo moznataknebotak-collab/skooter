@@ -1,23 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../supabase';
 
 export function useJobs(mechanicId = null) {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchJobs();
-
-    // Realtime subscription
-    const channel = supabase
-      .channel('jobs')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, fetchJobs)
-      .subscribe();
-
-    return () => supabase.removeChannel(channel);
-  }, [mechanicId]);
-
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     let query = supabase
       .from('jobs')
       .select(`
@@ -32,7 +20,19 @@ export function useJobs(mechanicId = null) {
     const { data } = await query;
     setJobs(data ?? []);
     setLoading(false);
-  };
+  }, [mechanicId]);
+
+  useEffect(() => {
+    fetchJobs();
+
+    // Realtime subscription
+    const channel = supabase
+      .channel('jobs')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'jobs' }, fetchJobs)
+      .subscribe();
+
+    return () => supabase.removeChannel(channel);
+  }, [fetchJobs]);
 
   const createJob = async (jobData) => {
     const { data, error } = await supabase

@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { C, s, Dot, Toast } from './ui';
+import { useState, useEffect, useCallback } from 'react';
+import { C, s, Toast } from './ui';
 import { supabase } from '../supabase';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -96,7 +96,7 @@ function AddUserSheet({ onClose, onDone }) {
 }
 
 // ── Stock Sheet (per mechanic) ─────────────────────────────────────────────────
-function StockSheet({ mechanic, onClose, onDone }) {
+function StockSheet({ mechanic, onClose }) {
   const [stock, setStock] = useState([]);
   const [loading, setLoading] = useState(true);
   const [newName, setNewName] = useState('');
@@ -105,9 +105,7 @@ function StockSheet({ mechanic, onClose, onDone }) {
   const [newMulti, setNewMulti] = useState(false);
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => { fetchStock(); }, []);
-
-  const fetchStock = async () => {
+  const fetchStock = useCallback(async () => {
     const { data } = await supabase
       .from('stock_items')
       .select('*')
@@ -115,7 +113,9 @@ function StockSheet({ mechanic, onClose, onDone }) {
       .order('name');
     setStock(data ?? []);
     setLoading(false);
-  };
+  }, [mechanic.id]);
+
+  useEffect(() => { fetchStock(); }, [fetchStock]);
 
   const adjustQty = async (item, delta) => {
     const newQty = Math.max(0, item.qty + delta);
@@ -209,7 +209,7 @@ function StockSheet({ mechanic, onClose, onDone }) {
 }
 
 // ── Main Admin component ───────────────────────────────────────────────────────
-export default function Admin({ profile, onLogout }) {
+export default function Admin({ onLogout }) {
   const [tab, setTab] = useState('users');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -219,13 +219,13 @@ export default function Admin({ profile, onLogout }) {
   const [editRole, setEditRole] = useState(null);  // { user, role }
   const [toast, setToast] = useState(null);
 
-  useEffect(() => { fetchUsers(); }, []);
-
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     const { data } = await supabase.from('users').select('*').order('role').order('name');
     setUsers(data ?? []);
     setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
   const handleDeleteUser = (user) => {
     setConfirm({
@@ -350,7 +350,6 @@ export default function Admin({ profile, onLogout }) {
         <StockSheet
           mechanic={stockFor}
           onClose={() => setStockFor(null)}
-          onDone={msg => setToast(msg)}
         />
       )}
 
