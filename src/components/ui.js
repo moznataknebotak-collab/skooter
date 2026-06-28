@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 // ── Design tokens ──────────────────────────────────────────────────────────────
 export const C = {
   bg: '#ffffff',
@@ -33,7 +35,6 @@ export const Dot = ({ color }) => (
   <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: color, marginRight: 5 }} />
 );
 
-import { useEffect } from 'react';
 export const Toast = ({ msg, onDone }) => {
   useEffect(() => { const t = setTimeout(onDone, 2800); return () => clearTimeout(t); }, [onDone]);
   return (
