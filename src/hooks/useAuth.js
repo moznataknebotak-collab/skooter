@@ -1,38 +1,35 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 
 export function useAuth() {
   const [user, setUser] = useState(null);
-  const [profile, setProfile] = useState(null); // { name, role }
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const fetchProfile = useCallback(async (userId) => {
-    const { data } = await supabase
-      .from('users')
-      .select('name, role')
-      .eq('id', userId)
-      .single();
-    setProfile(data);
-    setLoading(false);
-  }, []);
+  const buildProfile = (session) => {
+    if (!session?.user) return null;
+    const meta = session.user.user_metadata || {};
+    return {
+      name: meta.name || session.user.email,
+      role: meta.role || 'mechanic',
+    };
+  };
 
   useEffect(() => {
-    // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else setLoading(false);
+      setProfile(buildProfile(session));
+      setLoading(false);
     });
 
-    // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else { setProfile(null); setLoading(false); }
+      setProfile(buildProfile(session));
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
-  }, [fetchProfile]);
+  }, []);
 
   const signIn = async (email, password) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
