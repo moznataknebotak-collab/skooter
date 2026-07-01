@@ -1,0 +1,9 @@
+{
+  "short_name": "SkootrServis",
+  "name": "SkootrServis — Správa zakázek",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#2563EB",
+  "background_color": "#ffffff"
+}

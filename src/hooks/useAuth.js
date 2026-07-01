@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { supabase } from '../supabase';
 
+// Konvertuje uživatelské jméno na interní email pro Supabase Auth
+function usernameToEmail(username) {
+  return `${username.toLowerCase().trim()}@skootr.internal`;
+}
+
 export function useAuth() {
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
@@ -10,8 +15,9 @@ export function useAuth() {
     if (!session?.user) return null;
     const meta = session.user.user_metadata || {};
     return {
-      name: meta.name || session.user.email,
+      name: meta.name || meta.username || session.user.email,
       role: meta.role || 'mechanic',
+      username: meta.username || '',
     };
   };
 
@@ -31,7 +37,9 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  const signIn = async (email, password) => {
+  // Přihlášení přes uživatelské jméno (ne email)
+  const signIn = async (username, password) => {
+    const email = usernameToEmail(username);
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
@@ -40,5 +48,5 @@ export function useAuth() {
     await supabase.auth.signOut();
   };
 
-  return { user, profile, loading, signIn, signOut };
+  return { user, profile, loading, signIn, signOut, usernameToEmail };
 }

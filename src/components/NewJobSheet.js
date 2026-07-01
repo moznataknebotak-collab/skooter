@@ -1,19 +1,30 @@
 import { useState } from 'react';
-import { C, s } from './ui';
+import { useColors, useStyles } from './ui';
+import { useCustomers } from '../hooks/useCustomers';
 
 export default function NewJobSheet({ mechanics, onClose, onCreate }) {
-  const [f, setF] = useState({ client: '', address: '', scooterType: '', description: '', mechanicId: null, priority: 'medium' });
+  const C = useColors();
+  const s = useStyles();
+  const { search } = useCustomers();
+  const [f, setF] = useState({ client: '', address: '', scooterType: '', description: '', mechanicId: null, priority: 'medium', timeWindow: '' });
   const [loading, setLoading] = useState(false);
+  const [suggestions, setSuggestions] = useState([]);
   const set = k => v => setF(p => ({ ...p, [k]: v }));
   const valid = f.client && f.address && f.mechanicId;
 
+  const handleClientChange = (v) => {
+    set('client')(v);
+    setSuggestions(search(v));
+  };
+
+  const pickSuggestion = (c) => {
+    setF(p => ({ ...p, client: c.client, address: c.address, scooterType: c.scooterType || p.scooterType }));
+    setSuggestions([]);
+  };
+
   const handleCreate = async () => {
     setLoading(true);
-    try {
-      await onCreate(f);
-    } finally {
-      setLoading(false);
-    }
+    try { await onCreate(f); } finally { setLoading(false); }
   };
 
   return (
@@ -27,30 +38,54 @@ export default function NewJobSheet({ mechanics, onClose, onCreate }) {
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: C.sub, cursor: 'pointer', padding: 0 }}>×</button>
         </div>
 
-        {[['client', 'Jméno a příjmení', 'Jana Nováková', false], ['address', 'Adresa', 'Vinohradská 32, Praha 2', false], ['scooterType', 'Typ skútru', 'Xiaomi Mi Pro 2', false], ['description', 'Popis závady', 'Co se strojem je...', true]].map(([k, l, p, multi]) => (
-          <div key={k} style={s.section}>
-            <div style={{ ...s.label, marginBottom: 6 }}>{l}</div>
-            {multi
-              ? <textarea value={f[k]} onChange={e => set(k)(e.target.value)} placeholder={p} style={{ ...s.input, minHeight: 72, resize: 'vertical' }} />
-              : <input value={f[k]} onChange={e => set(k)(e.target.value)} placeholder={p} style={s.input} />
-            }
-          </div>
-        ))}
+        {/* Client with autocomplete */}
+        <div style={{ ...s.section, position: 'relative' }}>
+          <div style={{ fontSize: 11, color: C.sub, fontWeight: 500, textTransform: 'uppercase', marginBottom: 6 }}>Jméno a příjmení</div>
+          <input value={f.client} onChange={e => handleClientChange(e.target.value)} placeholder="Jana Nováková" style={s.input} />
+          {suggestions.length > 0 && (
+            <div style={{ position: 'absolute', left: 16, right: 16, top: '100%', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 4, zIndex: 10, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+              {suggestions.map((sg, i) => (
+                <div key={i} onClick={() => pickSuggestion(sg)} style={{ padding: '8px 12px', cursor: 'pointer', borderBottom: i < suggestions.length-1 ? `1px solid ${C.border}` : 'none' }}>
+                  <div style={{ fontSize: 13, fontWeight: 500 }}>{sg.client}</div>
+                  <div style={{ fontSize: 11, color: C.sub }}>{sg.address}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <div style={s.section}>
-          <div style={{ ...s.label, marginBottom: 10 }}>Přiřadit mechanika</div>
+          <div style={{ fontSize: 11, color: C.sub, fontWeight: 500, textTransform: 'uppercase', marginBottom: 6 }}>Adresa</div>
+          <input value={f.address} onChange={e => set('address')(e.target.value)} placeholder="Vinohradská 32, Praha 2" style={s.input} />
+        </div>
+
+        <div style={s.section}>
+          <div style={{ fontSize: 11, color: C.sub, fontWeight: 500, textTransform: 'uppercase', marginBottom: 6 }}>Typ skútru</div>
+          <input value={f.scooterType} onChange={e => set('scooterType')(e.target.value)} placeholder="Xiaomi Mi Pro 2" style={s.input} />
+        </div>
+
+        <div style={s.section}>
+          <div style={{ fontSize: 11, color: C.sub, fontWeight: 500, textTransform: 'uppercase', marginBottom: 6 }}>Popis závady</div>
+          <textarea value={f.description} onChange={e => set('description')(e.target.value)} placeholder="Co se strojem je..." style={{ ...s.input, minHeight: 72, resize: 'vertical' }} />
+        </div>
+
+        <div style={s.section}>
+          <div style={{ fontSize: 11, color: C.sub, fontWeight: 500, textTransform: 'uppercase', marginBottom: 6 }}>Časové okno (volitelné)</div>
+          <input value={f.timeWindow} onChange={e => set('timeWindow')(e.target.value)} placeholder="14:00 – 16:00" style={s.input} />
+        </div>
+
+        <div style={s.section}>
+          <div style={{ fontSize: 11, color: C.sub, fontWeight: 500, textTransform: 'uppercase', marginBottom: 10 }}>Přiřadit mechanika</div>
           {mechanics.map(m => (
             <div key={m.id} onClick={() => set('mechanicId')(m.id)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: `1px solid ${C.border}`, cursor: 'pointer' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span>{m.name}</span>
-              </div>
+              <span>{m.name}</span>
               {f.mechanicId === m.id && <span style={{ color: C.blue, fontWeight: 700 }}>✓</span>}
             </div>
           ))}
         </div>
 
         <div style={s.section}>
-          <div style={{ ...s.label, marginBottom: 10 }}>Priorita</div>
+          <div style={{ fontSize: 11, color: C.sub, fontWeight: 500, textTransform: 'uppercase', marginBottom: 10 }}>Priorita</div>
           <div style={{ display: 'flex', gap: 8 }}>
             {[['low', 'Nízká'], ['medium', 'Střední'], ['high', 'Vysoká']].map(([k, l]) => (
               <button key={k} onClick={() => set('priority')(k)} style={{ ...s.btnSecondary, fontWeight: f.priority === k ? 700 : 400, borderColor: f.priority === k ? C.text : C.border }}>{l}</button>

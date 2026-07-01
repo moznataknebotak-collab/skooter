@@ -1,22 +1,25 @@
 import { useState, useEffect, useCallback } from 'react';
 import { C, s, Toast } from './ui';
 import { supabase } from '../supabase';
+import RatesSheet from './RatesSheet';
 
 const ROLE_LABEL = { admin: 'Admin', dispatcher: 'Dispečer', mechanic: 'Mechanik' };
 const ROLE_COLOR = { admin: C.red, dispatcher: C.blue, mechanic: C.green };
 
-// ── Field ──────────────────────────────────────────────────────────────────────
+function usernameToEmail(username) {
+  return `${username.toLowerCase().trim()}@skootr.internal`;
+}
+
 function Field({ label, value, onChange, placeholder, type = 'text' }) {
   return (
     <div style={{ marginBottom: 12 }}>
       <div style={{ ...s.label, marginBottom: 5 }}>{label}</div>
       <input type={type} value={value} onChange={e => onChange(e.target.value)}
-        placeholder={placeholder} style={s.input} autoComplete="off" />
+        placeholder={placeholder} style={s.input} autoComplete="off" autoCapitalize="none" />
     </div>
   );
 }
 
-// ── Confirm ────────────────────────────────────────────────────────────────────
 function Confirm({ msg, onYes, onNo }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 400, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
@@ -32,47 +35,39 @@ function Confirm({ msg, onYes, onNo }) {
   );
 }
 
-// ── Add User ───────────────────────────────────────────────────────────────────
-// Používá signUp — nevyžaduje edge function ani service role key.
-// Supabase pošle potvrzovací e-mail, ale pokud máš "Confirm email" vypnuté
-// v Authentication → Settings, uživatel může hned přistoupit.
+// ── Add User — přihlášení přes username ───────────────────────────────────────
 function AddUserSheet({ onClose, onDone }) {
   const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState('mechanic');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const handleAdd = async () => {
-    if (!name || !email || !password) { setError('Vyplňte všechna pole.'); return; }
+    if (!name || !username || !password) { setError('Vyplňte všechna pole.'); return; }
     if (password.length < 6) { setError('Heslo musí mít alespoň 6 znaků.'); return; }
+    if (!/^[a-z0-9._-]+$/.test(username.toLowerCase())) {
+      setError('Uživatelské jméno smí obsahovat jen písmena, číslice, tečku, pomlčku a podtržítko.');
+      return;
+    }
     setLoading(true); setError('');
 
+    const email = usernameToEmail(username);
+
     try {
-      // 1. Vytvoř auth uživatele
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: { name, role },          // uloží se do user_metadata
-          emailRedirectTo: undefined,
-        },
+        options: { data: { name, username, role } },
       });
 
       if (signUpError) throw signUpError;
       if (!data?.user) throw new Error('Uživatel nebyl vytvořen.');
 
-      // 2. Vlož profil do tabulky users (trigger to dělá automaticky,
-      //    ale upsert zajistí správnou roli i kdyby trigger selhal)
-      const { error: profileError } = await supabase.from('users').upsert({
-        id: data.user.id,
-        name,
-        role,
-      });
-      if (profileError) throw profileError;
+      await supabase.from('users').upsert({ id: data.user.id, name, username, role });
 
-      onDone(`Uživatel ${name} byl přidán.`);
+      onDone(`Uživatel ${name} (${username}) byl přidán.`);
       onClose();
     } catch (e) {
       setError(e.message || 'Chyba při vytváření uživatele.');
@@ -93,7 +88,7 @@ function AddUserSheet({ onClose, onDone }) {
         </div>
         <div style={{ padding: 16 }}>
           <Field label="Jméno a příjmení" value={name} onChange={setName} placeholder="Pavel Novák" />
-          <Field label="E-mail" value={email} onChange={setEmail} placeholder="pavel@skootr.cz" type="email" />
+          <Field label="Uživatelské jméno (pro přihlášení)" value={username} onChange={v => setUsername(v.toLowerCase())} placeholder="pavel.novak" />
           <Field label="Heslo" value={password} onChange={setPassword} placeholder="min. 6 znaků" type="password" />
           <div style={{ marginBottom: 16 }}>
             <div style={{ ...s.label, marginBottom: 8 }}>Role</div>
@@ -111,8 +106,8 @@ function AddUserSheet({ onClose, onDone }) {
             style={{ ...s.btnPrimary, width: '100%', opacity: loading ? 0.6 : 1 }}>
             {loading ? 'Vytváření...' : 'Přidat uživatele'}
           </button>
-          <div style={{ marginTop: 12, fontSize: 12, color: C.sub }}>
-            Ujisti se že máš v Supabase vypnuté "Confirm email" (Authentication → Settings), jinak uživatel musí nejdřív potvrdit e-mail.
+          <div style={{ marginTop: 10, fontSize: 12, color: C.sub }}>
+            Uživatel se přihlásí uživatelským jménem "{username || 'jmeno'}" a heslem.
           </div>
         </div>
       </div>
@@ -120,8 +115,7 @@ function AddUserSheet({ onClose, onDone }) {
   );
 }
 
-// ── Change Password Sheet ──────────────────────────────────────────────────────
-// Admin mění heslo jinému uživateli přes SQL funkci (bez edge function)
+// ── Change Password ────────────────────────────────────────────────────────────
 function ChangePasswordSheet({ user, onClose, onDone }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -154,7 +148,7 @@ function ChangePasswordSheet({ user, onClose, onDone }) {
         <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
           <div>
             <div style={{ fontWeight: 700, fontSize: 17 }}>Změna hesla</div>
-            <div style={{ fontSize: 13, color: C.sub }}>{user.name}</div>
+            <div style={{ fontSize: 13, color: C.sub }}>{user.name} · @{user.username}</div>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: C.sub, cursor: 'pointer', padding: 0 }}>×</button>
         </div>
@@ -164,6 +158,69 @@ function ChangePasswordSheet({ user, onClose, onDone }) {
           <button onClick={handleChange} disabled={loading}
             style={{ ...s.btnPrimary, width: '100%', opacity: loading ? 0.6 : 1 }}>
             {loading ? 'Ukládání...' : 'Uložit heslo'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Sazby per mechanik ────────────────────────────────────────────────────────
+function MechanicRatesSheet({ mechanic, onClose, onDone }) {
+  const [callout, setCallout] = useState(String(mechanic.rate_callout ?? 40));
+  const [kmRate, setKmRate] = useState(String(mechanic.rate_km ?? 1.2));
+  const [hourly, setHourly] = useState(String(mechanic.rate_hourly ?? 40));
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const { error } = await supabase.from('users').update({
+        rate_callout: parseFloat(callout) || 40,
+        rate_km: parseFloat(kmRate) || 1.2,
+        rate_hourly: parseFloat(hourly) || 40,
+      }).eq('id', mechanic.id);
+      if (error) throw error;
+      onDone(`Sazby pro ${mechanic.name} uloženy.`);
+      onClose();
+    } catch (e) {
+      onDone('Chyba: ' + e.message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const RateField = ({ label, value, onChange, unit }) => (
+    <div style={s.section}>
+      <div style={{ ...s.label, marginBottom: 6 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <input type="number" min="0" step="0.1" value={value} onChange={e => onChange(e.target.value)}
+          style={{ ...s.input, maxWidth: 120 }} />
+        <span style={{ color: C.sub, fontSize: 14 }}>{unit}</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={s.modal} onClick={onClose}>
+      <div style={s.sheet} onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '12px 16px 0', display: 'flex', justifyContent: 'center' }}>
+          <div style={{ width: 36, height: 4, background: C.border, borderRadius: 2 }} />
+        </div>
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, display: 'flex', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 17 }}>Sazby mechanika</div>
+            <div style={{ fontSize: 13, color: C.sub }}>{mechanic.name}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: C.sub, cursor: 'pointer', padding: 0 }}>×</button>
+        </div>
+        <RateField label="Výjezdné" value={callout} onChange={setCallout} unit="€ / výjezd" />
+        <RateField label="Sazba za km" value={kmRate} onChange={setKmRate} unit="€ / km" />
+        <RateField label="Hodinová sazba" value={hourly} onChange={setHourly} unit="€ / hodina" />
+        <div style={{ padding: 16 }}>
+          <button onClick={handleSave} disabled={saving}
+            style={{ ...s.btnPrimary, width: '100%', opacity: saving ? 0.6 : 1 }}>
+            {saving ? 'Ukládám...' : 'Uložit sazby'}
           </button>
         </div>
       </div>
@@ -182,8 +239,7 @@ function StockSheet({ mechanic, onClose }) {
   const [saving, setSaving] = useState(false);
 
   const fetchStock = useCallback(async () => {
-    const { data } = await supabase
-      .from('stock_items').select('*')
+    const { data } = await supabase.from('stock_items').select('*')
       .eq('mechanic_id', mechanic.id).order('name');
     setStock(data ?? []);
     setLoading(false);
@@ -226,8 +282,6 @@ function StockSheet({ mechanic, onClose }) {
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 22, color: C.sub, cursor: 'pointer', padding: 0 }}>×</button>
         </div>
-
-        {/* Add form */}
         <div style={{ padding: '12px 16px', borderBottom: `1px solid ${C.border}`, background: C.surface }}>
           <div style={{ ...s.label, marginBottom: 10 }}>Přidat díl</div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>
@@ -236,13 +290,11 @@ function StockSheet({ mechanic, onClose }) {
               placeholder="Název dílu" style={{ ...s.input, flex: 2, minWidth: 140 }} />
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 10, color: C.sub }}>Qty</span>
-              <input value={newQty} onChange={e => setNewQty(e.target.value)}
-                type="number" min="0" style={{ ...s.input, width: 58 }} />
+              <input value={newQty} onChange={e => setNewQty(e.target.value)} type="number" min="0" style={{ ...s.input, width: 58 }} />
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               <span style={{ fontSize: 10, color: C.sub }}>Min</span>
-              <input value={newMin} onChange={e => setNewMin(e.target.value)}
-                type="number" min="1" style={{ ...s.input, width: 58 }} />
+              <input value={newMin} onChange={e => setNewMin(e.target.value)} type="number" min="1" style={{ ...s.input, width: 58 }} />
             </div>
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -256,11 +308,8 @@ function StockSheet({ mechanic, onClose }) {
             </button>
           </div>
         </div>
-
         {loading && <div style={{ padding: 20, color: C.sub, fontSize: 13 }}>Načítání...</div>}
-        {!loading && stock.length === 0 && (
-          <div style={{ padding: 20, color: C.sub, fontSize: 13 }}>Sklad je prázdný.</div>
-        )}
+        {!loading && stock.length === 0 && <div style={{ padding: 20, color: C.sub, fontSize: 13 }}>Sklad je prázdný.</div>}
         {stock.map(item => {
           const low = item.qty <= item.min_qty;
           const out = item.qty === 0;
@@ -295,9 +344,11 @@ export default function Admin({ onLogout }) {
   const [loading, setLoading] = useState(true);
   const [addUser, setAddUser] = useState(false);
   const [stockFor, setStockFor] = useState(null);
+  const [ratesFor, setRatesFor] = useState(null);
+  const [globalRatesOpen, setGlobalRatesOpen] = useState(false);
   const [confirm, setConfirm] = useState(null);
-  const [editRoleFor, setEditRoleFor] = useState(null);   // user id
-  const [changePwFor, setChangePwFor] = useState(null);   // user object
+  const [editRoleFor, setEditRoleFor] = useState(null);
+  const [changePwFor, setChangePwFor] = useState(null);
   const [toast, setToast] = useState(null);
 
   const fetchUsers = useCallback(async () => {
@@ -309,8 +360,6 @@ export default function Admin({ onLogout }) {
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
-  // Smazání: smažeme z tabulky users (auth záznam zůstane, ale uživatel se
-  // nepřihlásí protože fetchProfile selže — plné smazání vyžaduje service role)
   const handleDelete = (user) => {
     setConfirm({
       msg: `Opravdu odebrat uživatele ${user.name}? Přijde o přístup do aplikace.`,
@@ -340,37 +389,42 @@ export default function Admin({ onLogout }) {
         <div style={{ fontWeight: 700 }}>
           SkootrServis <span style={{ color: C.sub, fontWeight: 400, fontSize: 12 }}>/ Admin</span>
         </div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button onClick={() => setGlobalRatesOpen(true)} style={{ ...s.btnSecondary, fontSize: 12, padding: '6px 10px' }}>Sazby (výchozí)</button>
           <button onClick={() => setAddUser(true)} style={s.btnPrimary}>+ Uživatel</button>
           <button onClick={onLogout} style={s.btnLink}>Odhlásit</button>
         </div>
       </div>
 
-      {/* Tabs */}
       <div style={{ display: 'flex', borderBottom: `1px solid ${C.border}` }}>
         {[['users', 'Uživatelé'], ['stock', 'Sklady mechaniků']].map(([k, l]) => (
           <button key={k} onClick={() => setTab(k)} style={{ flex: 1, padding: '11px', background: C.bg, border: 'none', borderBottom: tab === k ? `2px solid ${C.text}` : '2px solid transparent', fontFamily: 'inherit', fontSize: 13, fontWeight: tab === k ? 600 : 400, color: tab === k ? C.text : C.sub, cursor: 'pointer' }}>{l}</button>
         ))}
       </div>
 
-      {/* USERS */}
       {tab === 'users' && (
         <div>
           <div style={{ ...s.label, padding: '12px 16px 8px' }}>Všichni uživatelé ({users.length})</div>
           {loading && <div style={{ padding: 20, color: C.sub, fontSize: 13 }}>Načítání...</div>}
           {users.map(user => (
-            <div key={user.id} style={{ ...s.section }}>
+            <div key={user.id} style={s.section}>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{user.name}</div>
                   <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>
                     <span style={{ color: ROLE_COLOR[user.role], fontWeight: 500 }}>{ROLE_LABEL[user.role]}</span>
+                    {user.username && <span style={{ marginLeft: 8 }}>@{user.username}</span>}
                     <span style={{ marginLeft: 8 }}>{new Date(user.created_at).toLocaleDateString('cs')}</span>
                   </div>
+                  {user.role === 'mechanic' && (
+                    <div style={{ fontSize: 11, color: C.sub, marginTop: 3 }}>
+                      Výjezd: {user.rate_callout ?? 40} € · Km: {user.rate_km ?? 1.2} € · Hod: {user.rate_hourly ?? 40} €
+                    </div>
+                  )}
                 </div>
 
                 {user.role !== 'admin' && (
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                     <button onClick={() => setEditRoleFor(editRoleFor === user.id ? null : user.id)}
                       style={{ ...s.btnSecondary, fontSize: 12, padding: '5px 10px' }}>
                       {editRoleFor === user.id ? 'Zrušit' : 'Role'}
@@ -379,6 +433,12 @@ export default function Admin({ onLogout }) {
                       style={{ ...s.btnSecondary, fontSize: 12, padding: '5px 10px' }}>
                       Heslo
                     </button>
+                    {user.role === 'mechanic' && (
+                      <button onClick={() => setRatesFor(user)}
+                        style={{ ...s.btnSecondary, fontSize: 12, padding: '5px 10px' }}>
+                        Sazby
+                      </button>
+                    )}
                     <button onClick={() => handleDelete(user)}
                       style={{ background: 'none', border: 'none', color: C.red, cursor: 'pointer', fontSize: 13, fontWeight: 500, padding: '5px 0' }}>
                       Odebrat
@@ -387,7 +447,6 @@ export default function Admin({ onLogout }) {
                 )}
               </div>
 
-              {/* Role picker inline */}
               {editRoleFor === user.id && (
                 <div style={{ marginTop: 10, display: 'flex', gap: 8 }}>
                   {[['mechanic', 'Mechanik'], ['dispatcher', 'Dispečer']].map(([r, l]) => (
@@ -403,18 +462,15 @@ export default function Admin({ onLogout }) {
         </div>
       )}
 
-      {/* STOCK */}
       {tab === 'stock' && (
         <div>
           <div style={{ ...s.label, padding: '12px 16px 8px' }}>Sklady mechaniků</div>
-          {mechanics.length === 0 && (
-            <div style={{ padding: 20, color: C.sub, fontSize: 13 }}>Žádní mechanici v systému.</div>
-          )}
+          {mechanics.length === 0 && <div style={{ padding: 20, color: C.sub, fontSize: 13 }}>Žádní mechanici v systému.</div>}
           {mechanics.map(m => (
             <div key={m.id} onClick={() => setStockFor(m)} style={s.row}>
               <div>
                 <div style={{ fontWeight: 600 }}>{m.name}</div>
-                <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>Mechanik</div>
+                <div style={{ fontSize: 12, color: C.sub, marginTop: 2 }}>@{m.username} · Mechanik</div>
               </div>
               <div style={{ color: C.sub, fontSize: 13 }}>Správa skladu ›</div>
             </div>
@@ -424,6 +480,8 @@ export default function Admin({ onLogout }) {
 
       {addUser && <AddUserSheet onClose={() => setAddUser(false)} onDone={msg => { setToast(msg); fetchUsers(); }} />}
       {stockFor && <StockSheet mechanic={stockFor} onClose={() => setStockFor(null)} />}
+      {ratesFor && <MechanicRatesSheet mechanic={ratesFor} onClose={() => setRatesFor(null)} onDone={msg => { setToast(msg); fetchUsers(); }} />}
+      {globalRatesOpen && <RatesSheet onClose={() => setGlobalRatesOpen(false)} onToast={setToast} />}
       {changePwFor && <ChangePasswordSheet user={changePwFor} onClose={() => setChangePwFor(null)} onDone={msg => setToast(msg)} />}
       {confirm && <Confirm msg={confirm.msg} onYes={confirm.onYes} onNo={() => setConfirm(null)} />}
       {toast && <Toast msg={toast} onDone={() => setToast(null)} />}
