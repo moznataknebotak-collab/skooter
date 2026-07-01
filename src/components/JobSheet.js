@@ -24,6 +24,7 @@ export default function JobSheet({ job, role, stock, onClose, onToast, onComplet
   const [photos, setPhotos] = useState([]);
   const [uploadingLabel, setUploadingLabel] = useState(null);
   const [photoError, setPhotoError] = useState('');
+  const [savedKm, setSavedKm] = useState(job.km_travel || 0);  // uložíme km ihned po recordEnd
   const [savedSignature, setSavedSignature] = useState(job.signature_data || null);
   const [savingSignature, setSavingSignature] = useState(false);
   const hasSignature = !!savedSignature;
@@ -35,7 +36,7 @@ export default function JobSheet({ job, role, stock, onClose, onToast, onComplet
     onToast && onToast(`Dorazil jsi k zákazníkovi — ${finalKm} km`);
     if (onStatusChange) onStatusChange(job.id, 'at_customer');
   };
-  const { km, status: gpsStatus, error: gpsError, recordStart, recordEnd } = useGPS(handleArrival);
+  const { status: gpsStatus, error: gpsError, recordStart, recordEnd } = useGPS(handleArrival);
 
   const canvasRef = useRef(null);
   const drawing = useRef(false);
@@ -117,6 +118,7 @@ export default function JobSheet({ job, role, stock, onClose, onToast, onComplet
   // "Jsem u zákazníka" = zaznamenáme koncovou pozici a vypočítáme km
   const handleAtCustomer = async () => {
     const finalKm = await recordEnd();
+    setSavedKm(finalKm); // uložíme do local state PŘED re-renderem způsobeným onStatusChange
     if (onStatusChange) onStatusChange(job.id, 'at_customer');
     onToast(`Příjezd zaznamenán — ${finalKm} km`);
   };
@@ -124,7 +126,7 @@ export default function JobSheet({ job, role, stock, onClose, onToast, onComplet
   const handleComplete = async () => {
     setSubmitting(true);
     try {
-      const finalKm = km > 0 ? km : (job.km_travel || 0);
+      const finalKm = savedKm > 0 ? savedKm : (job.km_travel || 0);
       const laborHours = parseFloat(manualHours) || 0;
       await onComplete({ notes, usedParts: selectedParts, kmTravel: finalKm, laborHours, complexity, signatureData: savedSignature });
     } catch { onToast('Chyba při ukládání'); }
@@ -205,7 +207,7 @@ export default function JobSheet({ job, role, stock, onClose, onToast, onComplet
                   )}
                   {gpsStatus === 'done' && (
                     <div style={{ fontSize:12, color:C.green, fontWeight:600 }}>
-                      ✓ Vzdálenost: {km} km (tam a zpět)
+                      ✓ Vzdálenost: {savedKm} km (tam a zpět)
                     </div>
                   )}
                   {gpsError && <div style={{ fontSize:11, color:C.red, marginTop:4 }}>{gpsError}</div>}
